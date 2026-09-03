@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap
 object GoogleTranslator {
 
     // ⚠️ นำ API Key ที่ได้จาก Google AI Studio มาใส่
-    private const val API_KEY = "AIzaSyBIEPyPOtxkH8pLq9BU4B1PIe7QAP7o0Co"
+    private const val API_KEY = ""
 
     // หน่วยความจำชั่วคราว (RAM) เพื่อความเร็วสูงสุดตอนเลื่อนจอไปมา
     private val memoryCache = ConcurrentHashMap<String, String>()
