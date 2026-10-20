@@ -9,7 +9,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,7 +29,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
-import com.example.conantcg.R // นำเข้ารูปภาพ R.drawable
+import com.example.conantcg.R
 import com.example.conantcg.data.model.Deck
 import com.example.conantcg.data.model.WebCard
 import com.example.conantcg.ui.viewmodel.CardViewModel
@@ -40,10 +39,9 @@ import com.example.conantcg.utils.ConanTheme
 @Composable
 fun DeckListScreen(viewModel: CardViewModel, onNavigate: (AppScreen) -> Unit, onBack: () -> Unit) {
     // --- State Variables ---
-    var showMenu by remember { mutableStateOf(false) }
-
     var showDeckSelectorForTest by remember { mutableStateOf(false) }
     var showHandTestDialog by remember { mutableStateOf(false) }
+    var showD20Dialog by remember { mutableStateOf(false) }
     var handTestCards by remember { mutableStateOf<List<WebCard>>(emptyList()) }
     var selectedDeckForTest by remember { mutableStateOf<Deck?>(null) }
 
@@ -89,12 +87,11 @@ fun DeckListScreen(viewModel: CardViewModel, onNavigate: (AppScreen) -> Unit, on
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp)
                 ) {
-                    // ✅ แก้ไขปุ่ม Back ให้ใช้ Image และแสดงรูป popup_arrow_left.png
                     IconButton(onClick = onBack) {
                         Image(
                             painter = painterResource(id = R.drawable.arrowleft),
                             contentDescription = "Back",
-                            modifier = Modifier.size(30.dp) // ปรับขนาดให้พอดี
+                            modifier = Modifier.size(30.dp)
                         )
                     }
                     Spacer(Modifier.weight(1f))
@@ -108,34 +105,137 @@ fun DeckListScreen(viewModel: CardViewModel, onNavigate: (AppScreen) -> Unit, on
             }
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { showMenu = true },
-                containerColor = ConanTheme.BowTieRed,
-                contentColor = Color.White,
-                icon = { Icon(Icons.Default.Add, "Menu") },
-                text = { Text("Menu", fontWeight = FontWeight.Bold) },
-                shape = RoundedCornerShape(16.dp),
-                elevation = FloatingActionButtonDefaults.elevation(8.dp)
-            )
+            var showAddMenu by remember { mutableStateOf(false) }
+
+            Box(contentAlignment = Alignment.BottomEnd) {
+                ExtendedFloatingActionButton(
+                    onClick = { showAddMenu = true },
+                    containerColor = ConanTheme.BowTieRed,
+                    contentColor = Color.White,
+                    icon = { Icon(Icons.Default.Add, "Menu Options", modifier = Modifier.size(20.dp)) },
+                    text = { Text("Menu...", fontWeight = FontWeight.Bold, fontSize = 14.sp) },
+                    shape = RoundedCornerShape(14.dp),
+                    elevation = FloatingActionButtonDefaults.elevation(6.dp),
+                    modifier = Modifier.height(44.dp)
+                )
+
+                MaterialTheme(
+                    shapes = MaterialTheme.shapes.copy(extraSmall = RoundedCornerShape(14.dp))
+                ) {
+                    DropdownMenu(
+                        expanded = showAddMenu,
+                        onDismissRequest = { showAddMenu = false },
+                        modifier = Modifier
+                            .width(220.dp)
+                            .background(Color.White)
+                    ) {
+                        // Option 1: Create New Deck
+                        DropdownMenuItem(
+                            text = {
+                                Text("Create New Deck", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF333333))
+                            },
+                            leadingIcon = {
+                                Box(
+                                    modifier = Modifier.size(32.dp).background(Color(0xFFE3F2FD), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.AddCircleOutline, contentDescription = "Create New Deck", tint = Color(0xFF1E88E5), modifier = Modifier.size(18.dp))
+                                }
+                            },
+                            onClick = {
+                                showAddMenu = false
+                                createAndGoToEditor()
+                            },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                        )
+
+                        Spacer(
+                            modifier = Modifier.fillMaxWidth().height(1.dp).padding(horizontal = 12.dp).background(Color.LightGray.copy(alpha = 0.3f))
+                        )
+
+                        // Option 2: Import Deck
+                        DropdownMenuItem(
+                            text = {
+                                Text("Import Deck", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF333333))
+                            },
+                            leadingIcon = {
+                                Box(
+                                    modifier = Modifier.size(32.dp).background(Color(0xFFE8F5E9), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.FileDownload, contentDescription = "Import Deck", tint = Color(0xFF4CAF50), modifier = Modifier.size(18.dp))
+                                }
+                            },
+                            onClick = {
+                                showAddMenu = false
+                                importCode = ""
+                                importStatus = ""
+                                showImportDialog = true
+                            },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                        )
+
+                        Spacer(
+                            modifier = Modifier.fillMaxWidth().height(1.dp).padding(horizontal = 12.dp).background(Color.LightGray.copy(alpha = 0.3f))
+                        )
+
+                        // Option 3: Hand Test
+                        DropdownMenuItem(
+                            text = {
+                                Text("Hand Test (5 Cards)", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF333333))
+                            },
+                            leadingIcon = {
+                                Box(
+                                    modifier = Modifier.size(32.dp).background(Color(0xFFFFF3E0), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.Style, contentDescription = "Hand Test", tint = Color(0xFFFB8C00), modifier = Modifier.size(18.dp))
+                                }
+                            },
+                            onClick = {
+                                showAddMenu = false
+                                if (viewModel.allDecks.isNotEmpty()) {
+                                    showDeckSelectorForTest = true
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                        )
+
+                        Spacer(
+                            modifier = Modifier.fillMaxWidth().height(1.dp)
+                                .padding(horizontal = 12.dp)
+                                .background(Color.LightGray.copy(alpha = 0.3f))
+                        )
+
+                        // Option 4: Roll a 20-sided die (D20)
+                        DropdownMenuItem(
+                            text = {
+                                Text("Roll D20 (20-Sided Dice)", fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold, color = Color(0xFF333333))
+                            },
+                            leadingIcon = {
+                                Box(
+                                    modifier = Modifier.size(32.dp)
+                                        .background(Color(0xFFFCE4EC), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.Casino, contentDescription = "Roll D20",
+                                        tint = ConanTheme.BowTieRed, modifier = Modifier.size(18.dp))
+                                }
+                            },
+                            onClick = {
+                                showAddMenu = false
+                                showD20Dialog = true
+                            },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
         },
-        containerColor = Color.Transparent // เปลี่ยนเป็น Transparent เพื่อให้เห็นรูปภาพพื้นหลัง
+        containerColor = Color.Transparent
     ) { padding ->
         Box(Modifier.fillMaxSize()) {
-
-            // --- 👇 ใส่รูปภาพ Background (bg1.jpg) ลงในหน้า My Deck 👇 ---
-            // Image(
-            //     painter = painterResource(id = R.drawable.bg),
-            //   contentDescription = "Background",
-            //    contentScale = ContentScale.Crop,
-            //    modifier = Modifier.fillMaxSize()
-            //)
-            // ฟิลเตอร์สีดำจางๆ เพื่อไม่ให้ลายกำแพงอิฐกลืนกับตัวการ์ด
-            //    Box(
-            //    modifier = Modifier
-            //      .fillMaxSize()
-            // .background(Color.Black.copy(alpha = 0.4f))
-            //   )
-            // --- 👆 จบส่วน Background 👆 ---
 
             if (viewModel.allDecks.isEmpty()) {
                 Box(Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -147,10 +247,9 @@ fun DeckListScreen(viewModel: CardViewModel, onNavigate: (AppScreen) -> Unit, on
                             Icon(Icons.Default.Style, null, modifier = Modifier.size(50.dp), tint = Color.White.copy(0.8f))
                         }
                         Spacer(Modifier.height(16.dp))
-                        // ปรับสีตัวหนังสือให้สว่างขึ้นเพราะพื้นหลังมืดลง
                         Text("No decks yet", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color.White)
                         Spacer(Modifier.height(8.dp))
-                        Text("Tap 'Menu' to create your first deck", color = Color.LightGray, fontSize = 14.sp)
+                        Text("Tap 'Menu...' to create your first deck", color = Color.LightGray, fontSize = 14.sp)
                     }
                 }
             } else {
@@ -177,22 +276,8 @@ fun DeckListScreen(viewModel: CardViewModel, onNavigate: (AppScreen) -> Unit, on
     }
 
     // --- Dialogs ---
-    if (showMenu) {
-        Dialog(onDismissRequest = { showMenu = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            Card(modifier = Modifier.width(300.dp), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(8.dp)) {
-                Column {
-                    Box(modifier = Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(ConanTheme.BlueSuit, Color(0xFF151C5E)))).padding(20.dp), contentAlignment = Alignment.Center) { Text("DECK MENU", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp, letterSpacing = 2.sp) }
-                    Column(Modifier.padding(vertical = 8.dp)) {
-                        MenuItem(icon = Icons.Default.AddCircleOutline, text = "Create New Deck") { showMenu = false; createAndGoToEditor() }
-                        HorizontalDivider(modifier = Modifier.padding(horizontal = 24.dp), color = Color.LightGray.copy(0.3f))
-                        MenuItem(icon = Icons.Default.FileDownload, text = "Import Deck") { showMenu = false; importCode = ""; importStatus = ""; showImportDialog = true }
-                        HorizontalDivider(modifier = Modifier.padding(horizontal = 24.dp), color = Color.LightGray.copy(0.3f))
-                        MenuItem(icon = Icons.Default.Style, text = "Hand Test (5 Cards)") { if (viewModel.allDecks.isNotEmpty()) { showMenu = false; showDeckSelectorForTest = true } else { showMenu = false } }
-                    }
-                    Box(modifier = Modifier.fillMaxWidth().background(Color(0xFFF5F5F5)).clickable { showMenu = false }.padding(vertical = 16.dp), contentAlignment = Alignment.Center) { Text("Cancel", color = Color.Gray, fontWeight = FontWeight.Bold) }
-                }
-            }
-        }
+    if (showD20Dialog) {
+        D20DiceDialog(onDismiss = { showD20Dialog = false })
     }
 
     if (showImportDialog) {
@@ -298,15 +383,6 @@ fun DeckListItem(deck: Deck, partnerCard: WebCard?, viewModel: CardViewModel, on
             }
             IconButton(onClick = onDelete) { Icon(Icons.Default.DeleteOutline, "Delete", tint = Color.Red.copy(alpha = 0.7f)) }
         }
-    }
-}
-
-@Composable
-fun MenuItem(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, onClick: () -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 16.dp, horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, contentDescription = null, tint = ConanTheme.BlueSuit, modifier = Modifier.size(24.dp)); Spacer(modifier = Modifier.width(16.dp))
-        Text(text, fontSize = 16.sp, fontWeight = FontWeight.Medium, color = Color.Black); Spacer(Modifier.weight(1f))
-        Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(16.dp))
     }
 }
 

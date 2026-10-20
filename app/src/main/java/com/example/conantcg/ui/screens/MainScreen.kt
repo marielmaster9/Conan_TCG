@@ -34,7 +34,8 @@ import com.example.conantcg.ui.viewmodel.CardViewModel
 import com.example.conantcg.utils.ConanTheme
 import kotlinx.coroutines.delay
 
-enum class AppScreen { HOME, CATALOG, COLLECTION, DECK_LIST, DECK_BUILDER, WISHLIST, WISHLIST_ADD }
+
+enum class AppScreen { HOME, CATALOG, COLLECTION, DECK_LIST, DECK_BUILDER, WISHLIST, WISHLIST_ADD, SCANNER }
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
@@ -96,6 +97,10 @@ fun MainAppScreen(vm: CardViewModel) {
                     AppScreen.WISHLIST_ADD -> WishlistAddScreen(
                         viewModel = vm,
                         onBack = { screen = AppScreen.WISHLIST }
+                    )
+                    AppScreen.SCANNER -> CardScannerScreen(
+                        viewModel = vm,
+                        onBackClick = { screen = AppScreen.HOME }
                     )
                 }
             }
@@ -160,13 +165,12 @@ fun HomeScreen(total: Int, owned: Int, isUpdating: Boolean, onUpdateClick: () ->
     var isVisible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { isVisible = true }
 
-    // เปลี่ยนมาเป็น Column และใช้ Weight จัดระยะหน้าจอ
     Column(
         Modifier.fillMaxSize().statusBarsPadding(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(16.dp))
 
         // Banner Section
         AnimatedVisibility(
@@ -179,7 +183,7 @@ fun HomeScreen(total: Int, owned: Int, isUpdating: Boolean, onUpdateClick: () ->
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 160.dp)
+                    .heightIn(max = 140.dp)
             )
         }
 
@@ -187,19 +191,18 @@ fun HomeScreen(total: Int, owned: Int, isUpdating: Boolean, onUpdateClick: () ->
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f) // ยืดพื้นที่ให้เต็มจอพอดี
-                .padding(horizontal = 24.dp, vertical = 16.dp),
+                .weight(1f)
+                .padding(horizontal = 24.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceEvenly
         ) {
 
             // -- Navigation Buttons --
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 AnimatedVisibility(
                     visible = isVisible,
                     enter = slideInVertically(initialOffsetY = { 100 }, animationSpec = tween(600, delayMillis = 100, easing = FastOutSlowInEasing)) + fadeIn(tween(600, 100))
                 ) {
-                    // ✅ ใช้ Icons.AutoMirrored.Filled.MenuBook ตามมาตรฐานใหม่
                     NavButton("Card Catalog", Icons.AutoMirrored.Filled.MenuBook) { nav(AppScreen.CATALOG) }
                 }
 
@@ -208,6 +211,13 @@ fun HomeScreen(total: Int, owned: Int, isUpdating: Boolean, onUpdateClick: () ->
                     enter = slideInVertically(initialOffsetY = { 100 }, animationSpec = tween(600, delayMillis = 200, easing = FastOutSlowInEasing)) + fadeIn(tween(600, 200))
                 ) {
                     NavButton("My Collection", Icons.Default.Star) { nav(AppScreen.COLLECTION) }
+                }
+
+                AnimatedVisibility(
+                    visible = isVisible,
+                    enter = slideInVertically(initialOffsetY = { 100 }, animationSpec = tween(600, delayMillis = 250, easing = FastOutSlowInEasing)) + fadeIn(tween(600, 250))
+                ) {
+                    NavButton("Card Scanner ", Icons.Default.QrCodeScanner) { nav(AppScreen.SCANNER) }
                 }
 
                 AnimatedVisibility(
@@ -238,7 +248,7 @@ fun HomeScreen(total: Int, owned: Int, isUpdating: Boolean, onUpdateClick: () ->
                     elevation = CardDefaults.cardElevation(4.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(Modifier.padding(16.dp)) {
+                    Column(Modifier.padding(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = "CASE FILE SUMMARY",
@@ -257,7 +267,7 @@ fun HomeScreen(total: Int, owned: Int, isUpdating: Boolean, onUpdateClick: () ->
                             }
                         }
 
-                        Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(8.dp))
 
                         Row(
                             modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
@@ -282,12 +292,10 @@ fun HomeScreen(total: Int, owned: Int, isUpdating: Boolean, onUpdateClick: () ->
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(8.dp))
         }
     }
 }
-
-// --- Helper Composables (Animated Button) ---
 
 @Composable
 fun NavButton(text: String, icon: ImageVector, onClick: () -> Unit) {
@@ -319,7 +327,7 @@ fun NavButton(text: String, icon: ImageVector, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(72.dp)
+            .height(60.dp)
             .scale(scale)
             .clip(RoundedCornerShape(12.dp))
             .pointerInput(Unit) {
@@ -336,12 +344,12 @@ fun NavButton(text: String, icon: ImageVector, onClick: () -> Unit) {
         Row(Modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier
-                    .width(64.dp)
+                    .width(56.dp)
                     .fillMaxHeight()
                     .background(ConanTheme.BowTieRed),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(30.dp))
+                Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(26.dp))
             }
             Box(
                 modifier = Modifier
@@ -361,7 +369,7 @@ fun NavButton(text: String, icon: ImageVector, onClick: () -> Unit) {
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
-                        fontSize = 18.sp
+                        fontSize = 16.sp
                     )
                     Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.White)
                 }

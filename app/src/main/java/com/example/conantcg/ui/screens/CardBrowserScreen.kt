@@ -46,8 +46,6 @@ import com.example.conantcg.ui.viewmodel.CardViewModel
 import com.example.conantcg.utils.CategoryMap
 import com.example.conantcg.utils.ConanTheme
 import kotlinx.coroutines.launch
-import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.TextRange
 
 enum class CollectionFilter { ALL, OWNED, MISSING }
 
@@ -260,21 +258,10 @@ fun CategoryBrowserPage(
         allCats.associateWith { CategoryMap.translate(it) }
     }
 
-    val availablePacks = remember(categoryCards) {
-        categoryCards.map { it.pack }
-            .distinct()
-            .filter { !it.equals("All", ignoreCase = true) } // ✅ กรอง All ทิ้ง
-            .sorted()
-    }
+    val availablePacks = remember(categoryCards) { categoryCards.map { it.pack }.distinct().sorted() }
     val availableCategories = remember(translatedCategories) {
         val allTranslated = translatedCategories.values.distinct()
-            // ✅ กรองคำว่า "All" ที่อาจจะติดมากับข้อมูลทิ้งไปก่อน
-            .filter { !it.equals("All", ignoreCase = true) }
-
-        // กฎเดิมของคุณ: แยกหมวดหมู่ "Other" ไปไว้ล่างสุดเสมอ
-        val (others, normals) = allTranslated.partition {
-            it.equals("Other", true) || it.equals("Others", true) || it == "อื่นๆ"
-        }
+        val (others, normals) = allTranslated.partition { it.equals("Other", true) || it.equals("Others", true) || it == "อื่นๆ" }
         normals.sorted() + others.sorted()
     }
 
@@ -399,8 +386,8 @@ fun CategoryBrowserPage(
                         onCategoryChange=onCategoryChange, currentColors=selectedColors, currentTypes=selectedTypes,
                         currentRarities=selectedRarities, currentAps=selectedAps, currentLevels=selectedLevels,
                         currentLps=selectedLps, currentPack=selectedPack?:"All", currentCategory=selectedCardCategory,
-                        availablePacks = (listOf("All") + availablePacks).map { it.trim() }.distinct(),
-                        availableCategories = (listOf("All") + availableCategories).map { it.trim() }.distinct()
+                        availablePacks = listOf("All") + availablePacks,
+                        availableCategories = listOf("All") + availableCategories
                     )
                 }
             }

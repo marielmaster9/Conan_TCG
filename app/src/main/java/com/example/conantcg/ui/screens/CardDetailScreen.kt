@@ -2,41 +2,35 @@ package com.example.conantcg.ui.screens
 
 import android.content.ContentValues
 import android.content.Context
-import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.*
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -54,10 +48,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -80,16 +76,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.absoluteValue
-import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.TextRange
 
-// ฟังก์ชันสำหรับเซฟรูปลง Gallery มือถือ
 fun saveBitmapToGallery(context: Context, bitmap: Bitmap, displayName: String) {
     val contentValues = ContentValues().apply {
         put(MediaStore.MediaColumns.DISPLAY_NAME, "$displayName.jpg")
         put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // สร้างโฟลเดอร์ ConanTCG ในแกลเลอรี
             put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/ConanTCG")
         }
     }
@@ -111,7 +103,6 @@ fun saveBitmapToGallery(context: Context, bitmap: Bitmap, displayName: String) {
     }
 }
 
-// --- SwipeableCardDetailDialog ---
 @Composable
 fun SwipeableCardDetailDialog(
     initialCards: List<WebCard>,
@@ -162,12 +153,18 @@ fun SwipeableCardDetailDialog(
                 }
             }
             if (pagerState.currentPage > 0) {
-                IconButton(onClick = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) } }, modifier = Modifier.align(Alignment.CenterStart).padding(start = 8.dp).background(Color.Black.copy(alpha = 0.3f), CircleShape)) {
+                IconButton(
+                    onClick = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) } },
+                    modifier = Modifier.align(Alignment.CenterStart).padding(start = 8.dp).background(Color.Black.copy(alpha = 0.3f), CircleShape)
+                ) {
                     Icon(imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Prev", tint = Color.White)
                 }
             }
             if (pagerState.currentPage < initialCards.size - 1) {
-                IconButton(onClick = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } }, modifier = Modifier.align(Alignment.CenterEnd).padding(end = 8.dp).background(Color.Black.copy(alpha = 0.3f), CircleShape)) {
+                IconButton(
+                    onClick = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } },
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 8.dp).background(Color.Black.copy(alpha = 0.3f), CircleShape)
+                ) {
                     Icon(imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next", tint = Color.White)
                 }
             }
@@ -175,7 +172,6 @@ fun SwipeableCardDetailDialog(
     }
 }
 
-// --- SingleCardDetailView ---
 @Composable
 fun SingleCardDetailView(
     card: WebCard,
@@ -186,9 +182,13 @@ fun SingleCardDetailView(
     isEditingMode: Boolean = false,
     onEditingModeChange: (Boolean) -> Unit = {}
 ) {
+    val context = LocalContext.current
+    val focusRequester = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
+
     val quantity = viewModel.getQuantity(card.cardNum)
-    // ✅ 2.1 สร้าง State สำหรับ TextFieldValue เพื่อควบคุม Cursor
-    var quantityTextValue by remember {
+
+    var quantityTextValue by remember(card.cardNum) {
         mutableStateOf(
             TextFieldValue(
                 text = quantity.toString(),
@@ -196,23 +196,32 @@ fun SingleCardDetailView(
             )
         )
     }
-    // ✅ 2.2 ซิงค์ค่า quantity และดัน Cursor ไปไว้หลังสุดเมื่อเปลี่ยนการ์ด หรือกดปุ่ม +/-
+
     LaunchedEffect(card.cardNum, quantity) {
         val currentStr = quantity.toString()
-        // อัปเดตก็ต่อเมื่อค่าไม่ตรงกัน เพื่อไม่ให้กวนจังหวะตอนผู้ใช้กำลังพิมพ์
         if (quantityTextValue.text != currentStr) {
             quantityTextValue = TextFieldValue(
                 text = currentStr,
-                selection = TextRange(currentStr.length) // บังคับ Cursor ไปหลังสุด
+                selection = TextRange(currentStr.length)
             )
         }
     }
-    val imageModel = viewModel.getCardImageModel(card)
-    var currentLanguage by remember { mutableStateOf("JP") }
 
-    val context = LocalContext.current
-    val focusRequester = remember { FocusRequester() }
-    val scope = rememberCoroutineScope() // สำหรับแอนิเมชันและดาวน์โหลดรูป
+    val imageModel = viewModel.getCardImageModel(card)
+
+    var currentLanguage by remember(card.cardNum) { mutableStateOf("JP") }
+
+    var nameTh by remember(card.cardNum) { mutableStateOf<String?>(null) }
+    var typeTh by remember(card.cardNum) { mutableStateOf<String?>(null) }
+    var colorTh by remember(card.cardNum) { mutableStateOf<String?>(null) }
+    var featureTh by remember(card.cardNum) { mutableStateOf<String?>(null) }
+
+    var nameEn by remember(card.cardNum) { mutableStateOf<String?>(null) }
+    var typeEn by remember(card.cardNum) { mutableStateOf<String?>(null) }
+    var colorEn by remember(card.cardNum) { mutableStateOf<String?>(null) }
+    var featureEn by remember(card.cardNum) { mutableStateOf<String?>(null) }
+
+    var isTranslating by remember(card.cardNum) { mutableStateOf(false) }
 
     if (isCollectionMode) {
         LaunchedEffect(isCurrentPage, isEditingMode) {
@@ -222,18 +231,6 @@ fun SingleCardDetailView(
             }
         }
     }
-
-    var nameTh by remember { mutableStateOf<String?>(null) }
-    var typeTh by remember { mutableStateOf<String?>(null) }
-    var colorTh by remember { mutableStateOf<String?>(null) }
-    var featureTh by remember { mutableStateOf<String?>(null) }
-
-    var nameEn by remember { mutableStateOf<String?>(null) }
-    var typeEn by remember { mutableStateOf<String?>(null) }
-    var colorEn by remember { mutableStateOf<String?>(null) }
-    var featureEn by remember { mutableStateOf<String?>(null) }
-
-    var isTranslating by remember { mutableStateOf(false) }
 
     val featureText = card.feature.replace(Regex("<.*?>"), "").trim()
     val cutInText = card.cut_in.replace(Regex("<.*?>"), "").trim()
@@ -249,45 +246,69 @@ fun SingleCardDetailView(
         }.trim()
     }
 
+    // ระบบจัดการการแปลภาษาผ่าน GoogleTranslator (แก้ไขพารามิเตอร์ให้เรียบร้อยแล้ว)
+// ระบบจัดการการแปลภาษาผ่าน GoogleTranslator
     LaunchedEffect(currentLanguage, card.cardNum) {
         if (currentLanguage == "TH" && nameTh == null) {
             isTranslating = true
             val delimiter = " ||| "
             val metaQuery = "${card.name}$delimiter${card.type}$delimiter${card.color}"
-            val metaResult = GoogleTranslator.translate(context, metaQuery, "th")
-            if (metaResult != null) {
+
+            // ✅ แก้ไข: เปลี่ยนจาก card.cardNum เป็น card.cardId
+            val metaResult = GoogleTranslator.translate(context, "${card.cardId}_meta", metaQuery, "th")
+
+            if (metaResult != metaQuery) {
                 val parts = metaResult.split("|||")
-                if (parts.size >= 1) nameTh = parts[0].trim()
-                if (parts.size >= 2) typeTh = parts[1].trim()
-                if (parts.size >= 3) colorTh = parts[2].trim()
+                if (parts.isNotEmpty()) nameTh = parts.getOrNull(0)?.trim()
+                if (parts.size >= 2) typeTh = parts.getOrNull(1)?.trim()
+                if (parts.size >= 3) colorTh = parts.getOrNull(2)?.trim()
+            } else {
+                Toast.makeText(context, "แปลภาษาไทยไม่สำเร็จ (ติดโควตา หรือเกิดข้อผิดพลาด)", Toast.LENGTH_SHORT).show()
             }
+
             if (originalText.isNotBlank()) {
-                val textResult = GoogleTranslator.translate(context, originalText, "th")
-                if (textResult != null) featureTh = textResult.trim()
+                // ✅ แก้ไข: เปลี่ยนจาก card.cardNum เป็น card.cardId
+                val textResult = GoogleTranslator.translate(context, "${card.cardId}_text", originalText, "th")
+                if (textResult != originalText) {
+                    featureTh = textResult.trim()
+                }
             }
             isTranslating = false
+
         } else if (currentLanguage == "EN" && nameEn == null) {
             isTranslating = true
             val delimiter = " ||| "
             val metaQuery = "${card.name}$delimiter${card.type}$delimiter${card.color}"
-            val metaResult = GoogleTranslator.translate(context, metaQuery, "en")
-            if (metaResult != null) {
+
+            // ✅ แก้ไข: เปลี่ยนจาก card.cardNum เป็น card.cardId
+            val metaResult = GoogleTranslator.translate(context, "${card.cardId}_meta", metaQuery, "en")
+
+            if (metaResult != metaQuery) {
                 val parts = metaResult.split("|||")
-                if (parts.size >= 1) nameEn = parts[0].trim()
-                if (parts.size >= 2) typeEn = parts[1].trim()
-                if (parts.size >= 3) colorEn = parts[2].trim()
+                if (parts.isNotEmpty()) nameEn = parts.getOrNull(0)?.trim()
+                if (parts.size >= 2) typeEn = parts.getOrNull(1)?.trim()
+                if (parts.size >= 3) colorEn = parts.getOrNull(2)?.trim()
+            } else {
+                Toast.makeText(context, "Translation failed (API Quota or Network error)", Toast.LENGTH_SHORT).show()
             }
+
             if (originalText.isNotBlank()) {
-                val textResult = GoogleTranslator.translate(context, originalText, "en")
-                if (textResult != null) featureEn = textResult.trim()
+                // ✅ แก้ไข: เปลี่ยนจาก card.cardNum เป็น card.cardId
+                val textResult = GoogleTranslator.translate(context, "${card.cardId}_text", originalText, "en")
+                if (textResult != originalText) {
+                    featureEn = textResult.trim()
+                }
             }
             isTranslating = false
         }
     }
 
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
-
-        // กล่องครอบรูปภาพ
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState())
+    ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             SubcomposeAsyncImage(
                 model = ImageRequest.Builder(LocalContext.current).data(imageModel).build(),
@@ -296,13 +317,10 @@ fun SingleCardDetailView(
                 contentScale = ContentScale.Fit
             )
 
-            // ✅ แถบปุ่มฝั่งขวาบน (เรียงลงมา)
             Column(
                 modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-
-                // 1. ปุ่มหัวใจ (โชว์เฉพาะเปิด showWishlistButton)
                 if (showWishlistButton) {
                     val isWishlisted = viewModel.isWishlisted(card.cardNum)
                     var triggerPulse by remember { mutableStateOf(false) }
@@ -347,7 +365,6 @@ fun SingleCardDetailView(
                     }
                 }
 
-                // 2. ปุ่มเซฟรูปภาพ
                 var isDownloading by remember { mutableStateOf(false) }
 
                 Box(
@@ -361,14 +378,13 @@ fun SingleCardDetailView(
                                 try {
                                     val request = ImageRequest.Builder(context)
                                         .data(imageModel)
-                                        .allowHardware(false) // สำคัญ: เพื่อให้ดึง Bitmap ออกมาได้
+                                        .allowHardware(false)
                                         .build()
 
                                     val result = context.imageLoader.execute(request)
                                     if (result is SuccessResult) {
                                         val bitmap = (result.drawable as? BitmapDrawable)?.bitmap
                                         if (bitmap != null) {
-                                            // สร้างชื่อไฟล์ที่เซฟ เช่น 001_D01
                                             val fileName = "${card.cardId.replace("/", "-")}_${card.cardNum}"
                                             withContext(Dispatchers.Main) {
                                                 saveBitmapToGallery(context, bitmap, fileName)
@@ -451,7 +467,6 @@ fun SingleCardDetailView(
 
                 Box(modifier = Modifier.width(60.dp), contentAlignment = Alignment.Center) {
                     BasicTextField(
-                        // ✅ 3.1 เปลี่ยนมาใช้ตัวแปร TextFieldValue ที่เราสร้างไว้
                         value = quantityTextValue,
                         onValueChange = { newValue ->
                             val input = newValue.text
@@ -460,17 +475,17 @@ fun SingleCardDetailView(
                             val newQty = if (finalInput.isEmpty()) 0 else finalInput.toInt()
 
                             if (newQty <= 999) {
-                                // ✅ 3.2 ป้องกันบัค Cursor ทะลุ Index เวลาลบเลข 0 ออก
                                 if (input != finalInput) {
                                     quantityTextValue = TextFieldValue(text = finalInput, selection = TextRange(finalInput.length))
                                 } else {
-                                    // ถ้าพิมพ์ตัวเลขปกติ ก็ใช้ newValue ที่ติด Cursor ตำแหน่งเดิมมาได้เลย
                                     quantityTextValue = newValue
                                 }
                                 viewModel.setCardQuantity(card.cardNum, newQty)
                             }
                         },
-                        modifier = Modifier.focusRequester(focusRequester).onFocusChanged { if (it.isFocused) onEditingModeChange(true) },
+                        modifier = Modifier
+                            .focusRequester(focusRequester)
+                            .onFocusChanged { if (it.isFocused) onEditingModeChange(true) },
                         textStyle = TextStyle(fontSize = 28.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, color = Color.Black, textDecoration = TextDecoration.Underline),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
@@ -489,18 +504,43 @@ fun SingleCardDetailView(
 
         Spacer(Modifier.height(16.dp))
 
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text("Card Text", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (isTranslating) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
                 }
-                Button(onClick = { currentLanguage = "JP" }, colors = ButtonDefaults.buttonColors(containerColor = if(currentLanguage == "JP") ConanTheme.BlueSuit else Color.LightGray), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp), modifier = Modifier.height(32.dp).defaultMinSize(minWidth = 1.dp)) { Text("JP", fontSize = 12.sp) }
+                Button(
+                    onClick = { currentLanguage = "JP" },
+                    colors = ButtonDefaults.buttonColors(containerColor = if (currentLanguage == "JP") ConanTheme.BlueSuit else Color.LightGray),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                    modifier = Modifier.height(32.dp).defaultMinSize(minWidth = 1.dp)
+                ) { Text("JP", fontSize = 12.sp) }
+
                 Spacer(Modifier.width(8.dp))
-                Button(onClick = { currentLanguage = "TH" }, colors = ButtonDefaults.buttonColors(containerColor = if(currentLanguage == "TH") ConanTheme.BowTieRed else Color.LightGray), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp), modifier = Modifier.height(32.dp).defaultMinSize(minWidth = 1.dp)) { Text("TH", fontSize = 12.sp) }
+
+                Button(
+                    onClick = { currentLanguage = "TH" },
+                    enabled = !isTranslating,
+                    colors = ButtonDefaults.buttonColors(containerColor = if (currentLanguage == "TH") ConanTheme.BowTieRed else Color.LightGray),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                    modifier = Modifier.height(32.dp).defaultMinSize(minWidth = 1.dp)
+                ) { Text("TH", fontSize = 12.sp) }
+
                 Spacer(Modifier.width(8.dp))
-                Button(onClick = { currentLanguage = "EN" }, colors = ButtonDefaults.buttonColors(containerColor = if(currentLanguage == "EN") Color(0xFF4CAF50) else Color.LightGray), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp), modifier = Modifier.height(32.dp).defaultMinSize(minWidth = 1.dp)) { Text("EN", fontSize = 12.sp) }
+
+                Button(
+                    onClick = { currentLanguage = "EN" },
+                    enabled = !isTranslating,
+                    colors = ButtonDefaults.buttonColors(containerColor = if (currentLanguage == "EN") Color(0xFF4CAF50) else Color.LightGray),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                    modifier = Modifier.height(32.dp).defaultMinSize(minWidth = 1.dp)
+                ) { Text("EN", fontSize = 12.sp) }
             }
         }
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -573,7 +613,7 @@ fun DetailStatItem(label: String, value: String, modifier: Modifier = Modifier) 
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier) {
         Text(label, fontSize = 12.sp, color = Color.Gray)
         Spacer(Modifier.height(4.dp))
-        val displayValue = if(value.isBlank() || value.equals("null", ignoreCase = true)) "-" else value
+        val displayValue = if (value.isBlank() || value.equals("null", ignoreCase = true)) "-" else value
         Text(text = displayValue, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ConanTheme.BlueSuit, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

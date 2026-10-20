@@ -651,7 +651,7 @@ private fun AdvancedSelectorDialog(viewModel: CardViewModel, mode: BuilderSelect
 ) {
     val colorMap = listOf("Blue" to "青", "Green" to "緑", "White" to "白", "Red" to "赤", "Yellow" to "黄", "Black" to "黒")
     val types = listOf("Partner", "Character", "Event", "Case")
-    val rarities = listOf("D", "C", "CP", "CP2", "R", "RP", "SR", "SRP", "SRCP", "MR", "MRP", "MRCP", "SEC", "PR")
+    val rarities = listOf("D", "C", "CP", "CP2", "R", "RP", "SR", "SRP", "SRCP", "MR", "MRP", "MRCP", "SEC", "PR", "SP")
     val aps = listOf("0", "1000", "2000", "3000", "4000", "5000", "6000", "7000", "8000", "9000")
     val levels = (1..9).map { it.toString() }
     val lps = listOf("0","1", "2", "3")

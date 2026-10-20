@@ -38,7 +38,7 @@ import java.io.File
 // --- 1. Rarity Stats Header ---
 @Composable
 fun RarityStatsHeader(stats: PackStats) {
-    val rarityOrder = listOf("D", "C", "CP", "R", "RP", "SR", "SRP", "SRCP", "MR", "MRP", "MRCP", "SEC", "PR")
+    val rarityOrder = listOf("D", "C", "CP", "R", "RP", "SR", "SRP", "SRCP", "MR", "MRP", "MRCP", "SEC", "PR", "SP")
     val overallProgress = if (stats.total > 0) stats.owned.toFloat() / stats.total.toFloat() else 0f
 
     Card(
@@ -176,7 +176,7 @@ fun FilterTable(
 ) {
     val colorMap = listOf("Blue" to "青", "Green" to "緑", "White" to "白", "Red" to "赤", "Yellow" to "黄", "Black" to "黒")
     val types = listOf("Partner", "Character", "Event", "Case")
-    val rarities = listOf("D", "C", "CP", "R", "RP", "SR", "SRP", "SRCP", "MR", "MRP", "MRCP", "SEC", "PR")
+    val rarities = listOf("D", "C", "CP", "R", "RP", "SR", "SRP", "SRCP", "MR", "MRP", "MRCP", "SEC", "PR", "SP")
     val aps = listOf("0", "1000", "2000", "3000", "4000", "5000", "6000", "7000", "8000", "9000")
 
     // [แก้] ตัดคำว่า "All" ออก เพราะถ้าไม่เลือกอะไรเลย (Set ว่าง) จะถือว่าเอาทั้งหมดอยู่แล้ว

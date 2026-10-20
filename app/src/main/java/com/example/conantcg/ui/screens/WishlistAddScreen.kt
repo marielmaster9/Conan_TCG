@@ -48,7 +48,6 @@ import com.example.conantcg.utils.CategoryMap
 import com.example.conantcg.utils.ConanTheme
 import kotlinx.coroutines.launch
 
-// ใช้ Enum ตัวเดียวกันสำหรับระบบ Filter
 enum class WishlistFilterStatus { ALL, OWNED, UNOWNED }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -60,6 +59,7 @@ fun WishlistAddScreen(viewModel: CardViewModel, onBack: () -> Unit) {
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     var viewingContext by remember { mutableStateOf<Pair<List<WebCard>, Int>?>(null) }
+    var dialogRefreshTrigger by remember { mutableStateOf(0) }
 
     val mapSaver = listSaver<MutableMap<PackCategory, String?>, String>(
         save = { map -> map.entries.map { "${it.key.name}|${it.value ?: ""}" } },
@@ -182,7 +182,8 @@ fun WishlistAddScreen(viewModel: CardViewModel, onBack: () -> Unit) {
                 onCategoryChange = { selectedCardCategory = it },
                 statusFilter = statusFilter,
                 onStatusChange = { statusFilter = it },
-                isAnyFilterActive = isAnyFilterActive
+                isAnyFilterActive = isAnyFilterActive,
+                externalRefreshTrigger = dialogRefreshTrigger
             )
         }
     }
@@ -194,8 +195,11 @@ fun WishlistAddScreen(viewModel: CardViewModel, onBack: () -> Unit) {
             startIndex = startIndex,
             viewModel = viewModel,
             isCollectionMode = false,
-            showWishlistButton = true, // ✅ สั่งเปิดปุ่มหัวใจ
-            onDismiss = { viewingContext = null }
+            showWishlistButton = true,
+            onDismiss = {
+                viewingContext = null
+                dialogRefreshTrigger++
+            }
         )
     }
 }
@@ -226,10 +230,14 @@ fun WishlistCategoryBrowserPage(
     onCategoryChange: (String) -> Unit,
     statusFilter: WishlistFilterStatus,
     onStatusChange: (WishlistFilterStatus) -> Unit,
-    isAnyFilterActive: Boolean
+    isAnyFilterActive: Boolean,
+    externalRefreshTrigger: Int = 0
 ) {
     var viewMode by rememberSaveable { mutableIntStateOf(1) }
     var isFilterExpanded by rememberSaveable { mutableStateOf(false) }
+
+    // State สำหรับบังคับให้ Recompose เมื่อกดหัวใจ
+    var wishlistRefreshTrigger by remember { mutableStateOf(0) }
 
     val categoryCards = remember(viewModel.cardList.size, category) { viewModel.cardList.filter { it.getPackCategory() == category } }
 
@@ -417,14 +425,51 @@ fun WishlistCategoryBrowserPage(
                     Column {
                         if (displayCards.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No matching cards.", color = Color.White) }
                         else {
+                            val isAllFolder = viewModel.currentWishlistFolder == "All" || viewModel.currentWishlistFolder.isBlank()
+
                             if (viewMode == 0) {
                                 LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     items(displayCards, key = { it.cardNum }) { card ->
+                                        // ตรวจสอบสถานะ Wishlist หากเป็นโฟลเดอร์ All จะตรวจสอบทุกโฟลเดอร์ที่มีอยู่
+                                        val isWishlisted = remember(card.cardNum, viewModel.currentWishlistFolder, wishlistRefreshTrigger, externalRefreshTrigger) {
+                                            if (isAllFolder) {
+                                                viewModel.wishlistFolders.any { folder ->
+                                                    viewModel.isWishlisted(card.cardNum, folder)
+                                                } || viewModel.isWishlisted(card.cardNum, "Default")
+                                            } else {
+                                                viewModel.isWishlisted(card.cardNum, viewModel.currentWishlistFolder)
+                                            }
+                                        }
+
                                         WishlistLocalCardListItem(
                                             card = card,
                                             imageModel = viewModel.getCardImageModel(card),
-                                            isWishlisted = viewModel.isWishlisted(card.cardNum),
-                                            onWishlistClick = { viewModel.toggleWishlist(card.cardNum) },
+                                            isWishlisted = isWishlisted,
+                                            onWishlistClick = {
+                                                if (isAllFolder) {
+                                                    if (isWishlisted) {
+                                                        // ลบออกจากทุกโฟลเดอร์ที่มีการ์ดใบนี้อยู่
+                                                        val foldersToCheck = viewModel.wishlistFolders + "Default"
+                                                        foldersToCheck.distinct().forEach { folder ->
+                                                            if (viewModel.isWishlisted(card.cardNum, folder)) {
+                                                                val tempFolder = viewModel.currentWishlistFolder
+                                                                viewModel.currentWishlistFolder = folder
+                                                                viewModel.toggleWishlist(card.cardNum)
+                                                                viewModel.currentWishlistFolder = tempFolder
+                                                            }
+                                                        }
+                                                    } else {
+                                                        // เพิ่มเข้าโฟลเดอร์ Default
+                                                        val tempFolder = viewModel.currentWishlistFolder
+                                                        viewModel.currentWishlistFolder = "Default"
+                                                        viewModel.toggleWishlist(card.cardNum)
+                                                        viewModel.currentWishlistFolder = tempFolder
+                                                    }
+                                                } else {
+                                                    viewModel.toggleWishlist(card.cardNum)
+                                                }
+                                                wishlistRefreshTrigger++
+                                            },
                                             onClick = {
                                                 val index = displayCards.indexOf(card)
                                                 if(index >= 0) onCardClick(displayCards, index)
@@ -435,11 +480,46 @@ fun WishlistCategoryBrowserPage(
                             } else {
                                 LazyVerticalGrid(columns = GridCells.Fixed(3), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     items(displayCards, key = { it.cardNum }) { card ->
+                                        // ตรวจสอบสถานะ Wishlist หากเป็นโฟลเดอร์ All จะตรวจสอบทุกโฟลเดอร์ที่มีอยู่
+                                        val isWishlisted = remember(card.cardNum, viewModel.currentWishlistFolder, wishlistRefreshTrigger, externalRefreshTrigger) {
+                                            if (isAllFolder) {
+                                                viewModel.wishlistFolders.any { folder ->
+                                                    viewModel.isWishlisted(card.cardNum, folder)
+                                                } || viewModel.isWishlisted(card.cardNum, "Default")
+                                            } else {
+                                                viewModel.isWishlisted(card.cardNum, viewModel.currentWishlistFolder)
+                                            }
+                                        }
+
                                         WishlistLocalCardGridItem(
                                             card = card,
                                             imageModel = viewModel.getCardImageModel(card),
-                                            isWishlisted = viewModel.isWishlisted(card.cardNum),
-                                            onWishlistClick = { viewModel.toggleWishlist(card.cardNum) },
+                                            isWishlisted = isWishlisted,
+                                            onWishlistClick = {
+                                                if (isAllFolder) {
+                                                    if (isWishlisted) {
+                                                        // ลบออกจากทุกโฟลเดอร์ที่มีการ์ดใบนี้อยู่
+                                                        val foldersToCheck = viewModel.wishlistFolders + "Default"
+                                                        foldersToCheck.distinct().forEach { folder ->
+                                                            if (viewModel.isWishlisted(card.cardNum, folder)) {
+                                                                val tempFolder = viewModel.currentWishlistFolder
+                                                                viewModel.currentWishlistFolder = folder
+                                                                viewModel.toggleWishlist(card.cardNum)
+                                                                viewModel.currentWishlistFolder = tempFolder
+                                                            }
+                                                        }
+                                                    } else {
+                                                        // เพิ่มเข้าโฟลเดอร์ Default
+                                                        val tempFolder = viewModel.currentWishlistFolder
+                                                        viewModel.currentWishlistFolder = "Default"
+                                                        viewModel.toggleWishlist(card.cardNum)
+                                                        viewModel.currentWishlistFolder = tempFolder
+                                                    }
+                                                } else {
+                                                    viewModel.toggleWishlist(card.cardNum)
+                                                }
+                                                wishlistRefreshTrigger++
+                                            },
                                             onClick = {
                                                 val index = displayCards.indexOf(card)
                                                 if(index >= 0) onCardClick(displayCards, index)
@@ -456,7 +536,6 @@ fun WishlistCategoryBrowserPage(
     }
 }
 
-// แถบกรอง All / Owned / Unowned แบบแนวยาว
 @Composable
 fun WishlistSegmentedFilter(currentFilter: WishlistFilterStatus, onFilterSelected: (WishlistFilterStatus) -> Unit) {
     Row(
@@ -510,10 +589,6 @@ fun WishlistFilterSegment(text: String, isSelected: Boolean, onClick: () -> Unit
     }
 }
 
-// -------------------------------------------------------------------------
-// Component แสดงรูปการ์ด
-// -------------------------------------------------------------------------
-
 @Composable
 fun WishlistLocalCardGridItem(
     card: WebCard,
@@ -535,7 +610,6 @@ fun WishlistLocalCardGridItem(
         }
     }
 
-    // ✅ นำสไตล์ตัวอักษรแบบเดียวกับใน SharedComponents.kt มาใช้เป๊ะๆ
     val labelStyle = TextStyle(
         fontSize = 9.sp,
         fontWeight = FontWeight.Bold,
@@ -554,7 +628,6 @@ fun WishlistLocalCardGridItem(
         colors = CardDefaults.cardColors(containerColor = Color.White)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // รูปการ์ด
             coil.compose.AsyncImage(
                 model = imageModel,
                 contentDescription = card.name,
@@ -562,16 +635,14 @@ fun WishlistLocalCardGridItem(
                 modifier = Modifier.fillMaxSize()
             )
 
-            // แถบสีด้านล่างสุด (Color Bar)
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .height(4.dp) // เปลี่ยนเป็น 4.dp ให้เท่า SharedComponents.kt
+                    .height(4.dp)
                     .background(stripeColor)
             )
 
-            // ✅ Bottom Labels ซ้าย-ขวา แบบเป๊ะๆ ตาม SharedComponents.kt
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -592,12 +663,11 @@ fun WishlistLocalCardGridItem(
                 Text(text = card.cardNum, style = labelStyle)
             }
 
-            // ปุ่มหัวใจ (ที่เพิ่มเข้ามาเฉพาะหน้า Wishlist)
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(4.dp)
-                    .size(24.dp) // ย่อขนาดลงหน่อยให้เท่ากล่อง x จำนวน
+                    .size(24.dp)
                     .background(if (isWishlisted) Color.White.copy(alpha = 0.9f) else Color.Black.copy(alpha = 0.5f), CircleShape)
                     .clickable { onWishlistClick() },
                 contentAlignment = Alignment.Center
