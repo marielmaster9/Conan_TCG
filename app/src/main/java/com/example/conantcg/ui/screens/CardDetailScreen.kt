@@ -222,6 +222,8 @@ fun SingleCardDetailView(
     var featureEn by remember(card.cardNum) { mutableStateOf<String?>(null) }
 
     var isTranslating by remember(card.cardNum) { mutableStateOf(false) }
+    var translationRetry by remember(card.cardNum) { mutableIntStateOf(0) }
+    var retryLanguage by remember(card.cardNum) { mutableStateOf<String?>(null) }
 
     if (isCollectionMode) {
         LaunchedEffect(isCurrentPage, isEditingMode) {
@@ -248,58 +250,77 @@ fun SingleCardDetailView(
 
     // ระบบจัดการการแปลภาษาผ่าน GoogleTranslator (แก้ไขพารามิเตอร์ให้เรียบร้อยแล้ว)
 // ระบบจัดการการแปลภาษาผ่าน GoogleTranslator
-    LaunchedEffect(currentLanguage, card.cardNum) {
-        if (currentLanguage == "TH" && nameTh == null) {
-            isTranslating = true
-            val delimiter = " ||| "
-            val metaQuery = "${card.name}$delimiter${card.type}$delimiter${card.color}"
+    LaunchedEffect(currentLanguage, card.cardNum, translationRetry) {
+        val languageCode = when (currentLanguage) {
+            "TH" -> "th"
+            "EN" -> "en"
+            else -> return@LaunchedEffect
+        }
 
-            // ✅ แก้ไข: เปลี่ยนจาก card.cardNum เป็น card.cardId
-            val metaResult = GoogleTranslator.translate(context, "${card.cardId}_meta", metaQuery, "th")
+        val forceRetry = retryLanguage == currentLanguage
+        val needMeta = forceRetry || (if (languageCode == "th") {
+            nameTh.isNullOrBlank()
+        } else {
+            nameEn.isNullOrBlank()
+        })
+        val needText = originalText.isNotBlank() && (forceRetry || (if (languageCode == "th") {
+            featureTh.isNullOrBlank()
+        } else {
+            featureEn.isNullOrBlank()
+        }))
 
-            if (metaResult != metaQuery) {
-                val parts = metaResult.split("|||")
-                if (parts.isNotEmpty()) nameTh = parts.getOrNull(0)?.trim()
-                if (parts.size >= 2) typeTh = parts.getOrNull(1)?.trim()
-                if (parts.size >= 3) colorTh = parts.getOrNull(2)?.trim()
-            } else {
-                Toast.makeText(context, "แปลภาษาไทยไม่สำเร็จ (ติดโควตา หรือเกิดข้อผิดพลาด)", Toast.LENGTH_SHORT).show()
-            }
+        if (!needMeta && !needText) return@LaunchedEffect
 
-            if (originalText.isNotBlank()) {
-                // ✅ แก้ไข: เปลี่ยนจาก card.cardNum เป็น card.cardId
-                val textResult = GoogleTranslator.translate(context, "${card.cardId}_text", originalText, "th")
-                if (textResult != originalText) {
-                    featureTh = textResult.trim()
+        isTranslating = true
+        try {
+            if (needMeta) {
+                val delimiter = " ||| "
+                val metaQuery = "${card.name}$delimiter${card.type}$delimiter${card.color}"
+                val result = GoogleTranslator.translate(
+                    context, "${card.cardId}_meta", metaQuery, languageCode
+                )
+                val parts = result.split("|||").map { it.trim() }
+
+                if (result != metaQuery && parts.size == 3 && parts.all { it.isNotBlank() }) {
+                    if (languageCode == "th") {
+                        nameTh = parts[0]
+                        typeTh = parts[1]
+                        colorTh = parts[2]
+                    } else {
+                        nameEn = parts[0]
+                        typeEn = parts[1]
+                        colorEn = parts[2]
+                    }
+                } else {
+                    Toast.makeText(
+                        context,
+                        if (languageCode == "th") "à¸¢à¸±à¸‡à¹à¸›à¸¥à¸Šà¸·à¹ˆà¸­à¸à¸²à¸£à¹Œà¸”à¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ à¸à¸” TH à¸­à¸µà¸à¸„à¸£à¸±à¹‰à¸‡à¹€à¸žà¸·à¹ˆà¸­à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆ"
+                        else "Card name translation failed. Tap EN to retry.",
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
             }
-            isTranslating = false
 
-        } else if (currentLanguage == "EN" && nameEn == null) {
-            isTranslating = true
-            val delimiter = " ||| "
-            val metaQuery = "${card.name}$delimiter${card.type}$delimiter${card.color}"
-
-            // ✅ แก้ไข: เปลี่ยนจาก card.cardNum เป็น card.cardId
-            val metaResult = GoogleTranslator.translate(context, "${card.cardId}_meta", metaQuery, "en")
-
-            if (metaResult != metaQuery) {
-                val parts = metaResult.split("|||")
-                if (parts.isNotEmpty()) nameEn = parts.getOrNull(0)?.trim()
-                if (parts.size >= 2) typeEn = parts.getOrNull(1)?.trim()
-                if (parts.size >= 3) colorEn = parts.getOrNull(2)?.trim()
-            } else {
-                Toast.makeText(context, "Translation failed (API Quota or Network error)", Toast.LENGTH_SHORT).show()
-            }
-
-            if (originalText.isNotBlank()) {
-                // ✅ แก้ไข: เปลี่ยนจาก card.cardNum เป็น card.cardId
-                val textResult = GoogleTranslator.translate(context, "${card.cardId}_text", originalText, "en")
-                if (textResult != originalText) {
-                    featureEn = textResult.trim()
+            // Card Text is requested independently, even if the name is already translated.
+            if (needText) {
+                val result = GoogleTranslator.translate(
+                    context, "${card.cardId}_text", originalText, languageCode
+                )
+                if (result.isNotBlank() && result != originalText) {
+                    if (languageCode == "th") featureTh = result.trim()
+                    else featureEn = result.trim()
+                } else {
+                    Toast.makeText(
+                        context,
+                        if (languageCode == "th") "à¸¢à¸±à¸‡à¹à¸›à¸¥ Card Text à¹„à¸¡à¹ˆà¸ªà¸³à¹€à¸£à¹‡à¸ˆ à¸à¸” TH à¸­à¸µà¸à¸„à¸£à¸±à¹‰à¸‡à¹€à¸žà¸·à¹ˆà¸­à¸¥à¸­à¸‡à¹ƒà¸«à¸¡à¹ˆ"
+                        else "Card Text translation failed. Tap EN to retry.",
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
             }
+        } finally {
             isTranslating = false
+            retryLanguage = null
         }
     }
 
@@ -525,7 +546,12 @@ fun SingleCardDetailView(
                 Spacer(Modifier.width(8.dp))
 
                 Button(
-                    onClick = { currentLanguage = "TH" },
+                    onClick = {
+                        if (currentLanguage == "TH") {
+                            retryLanguage = "TH"
+                            translationRetry++
+                        } else currentLanguage = "TH"
+                    },
                     enabled = !isTranslating,
                     colors = ButtonDefaults.buttonColors(containerColor = if (currentLanguage == "TH") ConanTheme.BowTieRed else Color.LightGray),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
@@ -535,7 +561,12 @@ fun SingleCardDetailView(
                 Spacer(Modifier.width(8.dp))
 
                 Button(
-                    onClick = { currentLanguage = "EN" },
+                    onClick = {
+                        if (currentLanguage == "EN") {
+                            retryLanguage = "EN"
+                            translationRetry++
+                        } else currentLanguage = "EN"
+                    },
                     enabled = !isTranslating,
                     colors = ButtonDefaults.buttonColors(containerColor = if (currentLanguage == "EN") Color(0xFF4CAF50) else Color.LightGray),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),

@@ -22,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap
 object GoogleTranslator {
 
     private const val TAG = "GoogleTranslator"
+    private const val CACHE_VERSION = "v5-quality"
     private val memoryCache = ConcurrentHashMap<String, String>()
     private val rateLimiter = Semaphore(1)
 
@@ -53,17 +54,39 @@ object GoogleTranslator {
         val languageName = if (languageCode == "th") "Thai" else "English"
         val prefs = context.getSharedPreferences("TranslationCache", Context.MODE_PRIVATE)
         // Include text hash to avoid returning stale translations when card text changes.
-        val cacheKey = "${languageCode}_${cardId.trim()}_${text.hashCode()}"
+        val cacheKey = "${CACHE_VERSION}_${languageCode}_${cardId.trim()}_${text.hashCode()}"
 
-        memoryCache[cacheKey]?.let { return@withContext it }
+        memoryCache[cacheKey]?.let { cached ->
+            val polishedCached = ConanTcgTerminology.normalizeTranslation(cached, languageCode)
+            if (polishedCached != cached) {
+                memoryCache[cacheKey] = polishedCached
+                prefs.edit().putString(cacheKey, polishedCached).apply()
+            }
+            return@withContext polishedCached
+        }
         prefs.getString(cacheKey, null)?.let { cached ->
-            memoryCache[cacheKey] = cached
-            return@withContext cached
+            val polishedCached = ConanTcgTerminology.normalizeTranslation(cached, languageCode)
+            memoryCache[cacheKey] = polishedCached
+            if (polishedCached != cached) {
+                prefs.edit().putString(cacheKey, polishedCached).apply()
+            }
+            return@withContext polishedCached
         }
 
         rateLimiter.withPermit {
             // Another queued request may have filled the cache while we waited.
-            memoryCache[cacheKey]?.let { return@withPermit it }
+            memoryCache[cacheKey]?.let { return@withPermit ConanTcgTerminology.normalizeTranslation(it, languageCode) }
+
+            val extraInstructions = if (text.contains(" ||| ")) {
+                "This is NAME ||| TYPE ||| COLOR. Return exactly three fully translated fields " +
+                    "separated by |||. Character names must be transliterated into the target language " +
+                    "(Thai letters for Thai, Latin letters for English). Do not leave Japanese names untranslated."
+            } else {
+                "Translate EVERY sentence of this card effect. Do not translate only the heading " +
+                    "and leave the remaining Japanese body unchanged. Preserve original card mechanics."
+            }
+
+            val terminologyRules = ConanTcgTerminology.promptGlossary(languageCode)
 
             val prompt = """
                 You are an expert translator for the Detective Conan Trading Card Game (TCG).
@@ -83,6 +106,10 @@ object GoogleTranslator {
                 4. Output ONLY the translated text; no explanations or quotes.
                 5. If the original contains the delimiter " ||| ", preserve it exactly.
 
+                6. $extraInstructions
+
+                7. $terminologyRules
+
                 Japanese text:
                 $text
             """.trimIndent()
@@ -95,16 +122,23 @@ object GoogleTranslator {
                             generationConfig = generationConfig { temperature = 0.1f }
                         )
 
-                    val result = model.generateContent(prompt).text?.trim().orEmpty()
-                    if (result.isNotEmpty()) {
+                    val rawResult = model.generateContent(prompt).text?.trim().orEmpty()
+                    val result = ConanTcgTerminology.correctPrintedCardName(
+                        text,
+                        ConanTcgTerminology.normalizeTranslation(rawResult, languageCode),
+                        languageCode
+                    )
+                    if (isUsableTranslation(text, result, languageCode) && ConanTcgTerminology.preservesNumericalFacts(text, result)) {
                         memoryCache[cacheKey] = result
                         prefs.edit().putString(cacheKey, result).apply()
                         return@withPermit result
+                    } else if (result.isNotBlank()) {
+                        Log.w(TAG, "Rejected partial/wrong-language output from $modelName")
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
-                    Log.w(TAG, "Translation with $modelName failed: ${error.javaClass.simpleName}")
+                    Log.e(TAG, "Translation with $modelName failed", error)
                     delay(800L)
                 }
             }
@@ -112,5 +146,28 @@ object GoogleTranslator {
             // Match prior behavior: show original text when all models are unavailable.
             text
         }
+    }
+    /** Reject responses that are empty, missing metadata fields, or mostly unchanged Japanese. */
+    private fun isUsableTranslation(source: String, result: String, languageCode: String): Boolean {
+        if (result.isBlank() || result.trim() == source.trim()) return false
+        if (languageCode == "th" && result.none { it in '\u0E00'..'\u0E7F' }) return false
+
+        if (source.contains(" ||| ")) {
+            val parts = result.split("|||").map { it.trim() }
+            if (parts.size != 3 || parts.any { it.isBlank() }) return false
+            if (languageCode == "th" && parts.any { part -> part.none { it in '\u0E00'..'\u0E7F' } }) return false
+            if (languageCode == "en" && parts.any { part -> part.none { it in 'A'..'Z' || it in 'a'..'z' } }) return false
+        }
+
+        fun isJapanese(char: Char): Boolean =
+            char in '\u3040'..'\u30FF' || char in '\u3400'..'\u9FFF'
+
+        val sourceJapaneseCount = source.count(::isJapanese)
+        val resultJapaneseCount = result.count(::isJapanese)
+        if (sourceJapaneseCount >= 12 && resultJapaneseCount >= 8 &&
+            resultJapaneseCount * 100 >= result.length * 25
+        ) return false
+
+        return true
     }
 }
