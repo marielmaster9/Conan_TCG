@@ -52,6 +52,26 @@ import com.example.conantcg.utils.ConanTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+// Unified spacing system for the Deck Builder screen.
+// Change these values to adjust the layout without touching any deck logic.
+private object DBLayoutSpacing {
+    val screenHorizontal = 16.dp
+    val topInset = 14.dp
+    val deckNameHeight = 48.dp
+    val nameToBoard = 8.dp
+    val boardVerticalInset = 8.dp
+    val slotsHeight = 154.dp
+    val slotsGap = 16.dp
+    val slotsToDeckTitle = 18.dp
+    val titleToDeckGrid = 8.dp
+    val deckGridHeight = 210.dp
+    val deckToStats = 16.dp
+    val boardToSave = 16.dp
+    val saveHeight = 52.dp
+    val saveToActions = 16.dp
+    val bottomInset = 24.dp
+}
+
 private enum class BuilderSelectionMode { PARTNER, CASE, DECK }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -60,6 +80,9 @@ fun DeckBuilderScreen(viewModel: CardViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var showSelector by remember { mutableStateOf(false) }
+    var showOwnershipChecker by remember {
+        mutableStateOf(false)
+    }
     var selectionMode by remember { mutableStateOf(BuilderSelectionMode.DECK) }
     var showCopyNotification by remember { mutableStateOf(false) }
 
@@ -109,22 +132,23 @@ fun DeckBuilderScreen(viewModel: CardViewModel, onBack: () -> Unit) {
                         Text("Editing Mode", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
                     }
                     Spacer(Modifier.weight(1f))
-                  //  IconButton(onClick = { viewModel.clearDeck() }) { Icon(Icons.Default.Delete, contentDescription = "Clear Deck", tint = Color.White) }
+                    //  IconButton(onClick = { viewModel.clearDeck() }) { Icon(Icons.Default.Delete, contentDescription = "Clear Deck", tint = Color.White) }
                 }
             }
 
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp)
+                    .padding(horizontal = DBLayoutSpacing.screenHorizontal)
                     .verticalScroll(rememberScrollState())
             ) {
-                Spacer(Modifier.height(16.dp))
+                // Consistent separation between the header and the deck name.
+                Spacer(Modifier.height(DBLayoutSpacing.topInset))
 
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(45.dp)
+                        .height(DBLayoutSpacing.deckNameHeight)
                         .shadow(2.dp, RoundedCornerShape(8.dp))
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color.White),
@@ -148,7 +172,8 @@ fun DeckBuilderScreen(viewModel: CardViewModel, onBack: () -> Unit) {
                     )
                 }
 
-                Spacer(Modifier.height(16.dp))
+                // The deck name and the board form one visual group.
+                Spacer(Modifier.height(DBLayoutSpacing.nameToBoard))
 
                 dev.shreyaspatil.capturable.Capturable(
                     controller = captureController,
@@ -161,24 +186,37 @@ fun DeckBuilderScreen(viewModel: CardViewModel, onBack: () -> Unit) {
                         }
                     }
                 ) {
+                    // Align the board, stats, name field and Save button to the same edges.
+                    // Only use vertical inset inside the exportable deck preview.
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp)
+                            .padding(vertical = DBLayoutSpacing.boardVerticalInset)
                     ) {
-                        Row(modifier = Modifier.fillMaxWidth().height(160.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(DBLayoutSpacing.slotsHeight),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Box(modifier = Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                                 DBDeckSlot("PARTNER", partnerCard, viewModel, Modifier.fillMaxHeight().aspectRatio(0.71f)) { selectionMode = BuilderSelectionMode.PARTNER; showSelector = true }
                             }
-                            Spacer(Modifier.width(16.dp))
+                            Spacer(Modifier.width(DBLayoutSpacing.slotsGap))
                             Box(modifier = Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                                 DBDeckSlot("CASE", caseCard, viewModel, Modifier.fillMaxWidth(0.95f).aspectRatio(1.41f)) { selectionMode = BuilderSelectionMode.CASE; showSelector = true }
                             }
                         }
 
-                        Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(DBLayoutSpacing.slotsToDeckTitle))
 
-                        Text("Main Deck (${deckCards.size}/40)", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
+                        Text(
+                            "Main Deck (${deckCards.size}/40)",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = DBLayoutSpacing.titleToDeckGrid)
+                        )
 
                         val deckInteractionSrc = remember { MutableInteractionSource() }
                         val isDeckPressed by deckInteractionSrc.collectIsPressedAsState()
@@ -187,7 +225,7 @@ fun DeckBuilderScreen(viewModel: CardViewModel, onBack: () -> Unit) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(220.dp)
+                                .height(DBLayoutSpacing.deckGridHeight)
                                 .scale(deckScale)
                                 .shadow(4.dp, RoundedCornerShape(8.dp))
                                 .clip(RoundedCornerShape(8.dp))
@@ -222,15 +260,38 @@ fun DeckBuilderScreen(viewModel: CardViewModel, onBack: () -> Unit) {
                             }
                         }
 
-                        Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(DBLayoutSpacing.deckToStats))
                         DBStatsPanel(deckCards)
                     }
                 }
 
-                Spacer(Modifier.height(24.dp))
-                Button(onClick = { onBack() }, modifier = Modifier.fillMaxWidth().height(56.dp).shadow(4.dp, RoundedCornerShape(28.dp)), colors = ButtonDefaults.buttonColors(containerColor = ConanTheme.BlueSuit), shape = RoundedCornerShape(28.dp)) { Text("Save & Close", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold) }
-                Spacer(Modifier.height(24.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                // Keep the save action outside Capturable so it is not in exported deck images.
+                Spacer(Modifier.height(DBLayoutSpacing.boardToSave))
+                Button(
+                    onClick = { onBack() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(DBLayoutSpacing.saveHeight)
+                        .shadow(4.dp, RoundedCornerShape(28.dp)),
+                    colors = ButtonDefaults.buttonColors(containerColor = ConanTheme.BlueSuit),
+                    shape = RoundedCornerShape(28.dp)
+                ) {
+                    Text(
+                        "Save & Close",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(Modifier.height(DBLayoutSpacing.saveToActions))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     DBCircleButton(Icons.Default.Delete) { viewModel.clearDeck() }
 
                     DBCircleButton(Icons.Default.CameraAlt) {
@@ -245,8 +306,13 @@ fun DeckBuilderScreen(viewModel: CardViewModel, onBack: () -> Unit) {
                             showCopyNotification = false
                         }
                     }
+
+                    // Option A: same 50.dp white circular button as the existing actions.
+                    DBCircleButton(Icons.Default.FactCheck) {
+                        showOwnershipChecker = true
+                    }
                 }
-                Spacer(Modifier.height(50.dp))
+                Spacer(Modifier.height(DBLayoutSpacing.bottomInset))
             }
         }
 
@@ -278,7 +344,14 @@ fun DeckBuilderScreen(viewModel: CardViewModel, onBack: () -> Unit) {
             }
         }
     }
-
+    if (showOwnershipChecker) {
+        DeckOwnershipCheckerDialog(
+            viewModel = viewModel,
+            onDismiss = {
+                showOwnershipChecker = false
+            }
+        )
+    }
     if (showSelector) {
         AdvancedSelectorDialog(
             viewModel = viewModel, mode = selectionMode,

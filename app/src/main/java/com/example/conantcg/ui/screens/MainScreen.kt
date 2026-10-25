@@ -35,7 +35,17 @@ import com.example.conantcg.utils.ConanTheme
 import kotlinx.coroutines.delay
 
 
-enum class AppScreen { HOME, CATALOG, COLLECTION, DECK_LIST, DECK_BUILDER, WISHLIST, WISHLIST_ADD, SCANNER }
+enum class AppScreen {
+    HOME,
+    CATALOG,
+    COLLECTION,
+    DECK_LIST,
+    DECK_BUILDER,
+    WISHLIST,
+    WISHLIST_ADD,
+    SCANNER,
+    BACKUP_RESTORE
+}
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
@@ -102,6 +112,19 @@ fun MainAppScreen(vm: CardViewModel) {
                         viewModel = vm,
                         onBackClick = { screen = AppScreen.HOME }
                     )
+                    AppScreen.BACKUP_RESTORE -> BackupRestoreScreen(
+                        viewModel = vm,
+                        onBackClick = {
+                            screen = AppScreen.HOME
+                        }
+                    )
+                    AppScreen.BACKUP_RESTORE -> BackupRestoreScreen(
+                        viewModel = vm,
+                        onBackClick = {
+                            screen = AppScreen.HOME
+                        }
+                    )
+
                 }
             }
         }
@@ -235,62 +258,119 @@ fun HomeScreen(total: Int, owned: Int, isUpdating: Boolean, onUpdateClick: () ->
                 }
             }
 
+
             // -- Case File Summary (Stats) --
             AnimatedVisibility(
                 visible = isVisible,
-                enter = slideInVertically(initialOffsetY = { 50 }, animationSpec = tween(600, delayMillis = 500, easing = FastOutSlowInEasing)) + fadeIn(tween(600, 500))
+                enter = slideInVertically(
+                    initialOffsetY = { 50 },
+                    animationSpec = tween(
+                        600,
+                        delayMillis = 500
+                    )
+                ) + fadeIn(tween(600, 500))
             ) {
-                Card(
-                    onClick = onUpdateClick,
-                    enabled = !isUpdating,
-                    colors = CardDefaults.cardColors(containerColor = ConanTheme.BrickBg),
-                    shape = RoundedCornerShape(8.dp),
-                    elevation = CardDefaults.cardElevation(4.dp),
+                Box(
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(Modifier.padding(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "CASE FILE SUMMARY",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = ConanTheme.TextSecondary,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.sp
-                            )
-                            if (isUpdating) {
-                                Spacer(modifier = Modifier.width(8.dp))
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(14.dp),
-                                    color = ConanTheme.BlueSuit,
-                                    strokeWidth = 2.dp
-                                )
-                            }
-                        }
-
-                        Spacer(Modifier.height(8.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
-                            verticalAlignment = Alignment.CenterVertically
+                    // Original Summary Card
+                    Card(
+                        onClick = onUpdateClick,
+                        enabled = !isUpdating,
+                        colors = CardDefaults.cardColors(
+                            containerColor = ConanTheme.BrickBg
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        elevation = CardDefaults.cardElevation(4.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp)
                         ) {
-                            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                                StatNumberItem("Total Cards", total.toString())
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "CASE FILE SUMMARY",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = ConanTheme.TextSecondary,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp
+                                )
+
+                                if (isUpdating) {
+                                    Spacer(Modifier.width(8.dp))
+
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(14.dp),
+                                        color = ConanTheme.BlueSuit,
+                                        strokeWidth = 2.dp
+                                    )
+                                }
                             }
 
-                            Box(
-                                modifier = Modifier
-                                    .width(1.dp)
-                                    .fillMaxHeight(0.7f)
-                                    .background(Color.LightGray)
-                            )
+                            Spacer(Modifier.height(8.dp))
 
-                            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                                StatNumberItem("Collected", owned.toString())
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(IntrinsicSize.Min),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier.weight(1f),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    StatNumberItem(
+                                        "Total Cards",
+                                        total.toString()
+                                    )
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .width(1.dp)
+                                        .fillMaxHeight(0.7f)
+                                        .background(Color.LightGray)
+                                )
+
+                                Box(
+                                    modifier = Modifier.weight(1f),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    StatNumberItem(
+                                        "Collected",
+                                        owned.toString()
+                                    )
+                                }
                             }
                         }
                     }
+
+                    // Backup Icon: overlay, does not change Card size.
+                    IconButton(
+                        onClick = {
+                            nav(AppScreen.BACKUP_RESTORE)
+                        },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(
+                                top = 3.dp,
+                                end = 8.dp
+                            )
+                            .size(34.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CloudUpload,
+                            contentDescription = "Backup & Restore",
+                            tint = ConanTheme.BlueSuit,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
                 }
             }
+
 
             Spacer(Modifier.height(8.dp))
         }

@@ -14,6 +14,7 @@ import org.json.JSONObject
 import org.jsoup.Jsoup
 import java.io.File
 import java.net.URL
+import org.json.JSONArray
 
 class CardViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = CardRepository(app)
@@ -63,13 +64,36 @@ class CardViewModel(app: Application) : AndroidViewModel(app) {
             val savedPacks = prefs.getStringSet("dl_packs", emptySet()) ?: emptySet()
             downloadedPacks.addAll(savedPacks)
 
-            val savedFoldersStr = prefs.getString("wishlist_folders_order", null)
-            val savedFolders = if (!savedFoldersStr.isNullOrBlank()) {
-                savedFoldersStr.split(",")
-            } else {
-                prefs.getStringSet("wishlist_folders", setOf("Default"))?.toList()
-                    ?: listOf("Default")
-            }
+
+            val savedFoldersJson = prefs.getString(
+                "wishlist_folders_json",
+                null
+            )
+
+            val savedFolders = runCatching {
+                if (!savedFoldersJson.isNullOrBlank()) {
+                    val array = JSONArray(savedFoldersJson)
+
+                    (0 until array.length()).map { index ->
+                        array.getString(index)
+                    }
+                } else {
+                    val savedFoldersStr = prefs.getString(
+                        "wishlist_folders_order",
+                        null
+                    )
+
+                    if (!savedFoldersStr.isNullOrBlank()) {
+                        savedFoldersStr.split(",")
+                    } else {
+                        prefs.getStringSet(
+                            "wishlist_folders",
+                            setOf("Default")
+                        )?.toList() ?: listOf("Default")
+                    }
+                }
+            }.getOrDefault(listOf("Default"))
+
 
             wishlistFolders.clear()
             wishlistFolders.addAll(savedFolders)
@@ -247,6 +271,10 @@ class CardViewModel(app: Application) : AndroidViewModel(app) {
                 wishlistedCardsMap[folder]?.toSet() ?: emptySet()
             )
         }
+        editor.putString(
+            "wishlist_folders_json",
+            JSONArray(wishlistFolders.toList()).toString()
+        )
         editor.apply()
     }
 

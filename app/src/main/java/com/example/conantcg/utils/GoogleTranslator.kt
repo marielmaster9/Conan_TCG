@@ -1,95 +1,116 @@
 package com.example.conantcg.utils
 
 import android.content.Context
-import com.google.ai.client.generativeai.GenerativeModel
-import com.google.ai.client.generativeai.type.generationConfig
+import android.util.Log
+import com.google.firebase.Firebase
+import com.google.firebase.ai.ai
+import com.google.firebase.ai.type.GenerativeBackend
+import com.google.firebase.ai.type.generationConfig
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * Detective Conan TCG translations using Firebase AI Logic.
+ * No Gemini API key, service-account credential, or token belongs in this file.
+ * Set up Firebase AI Logic and enforce Firebase App Check before use.
+ */
 object GoogleTranslator {
 
-    // ⚠️ นำ API Key ที่ได้จาก Google AI Studio มาใส่
-    private const val API_KEY = "AIzaSyBIEPyPOtxkH8pLq9BU4B1PIe7QAP7o0Co"
-
-    // หน่วยความจำชั่วคราว (RAM) เพื่อความเร็วสูงสุดตอนเลื่อนจอไปมา
+    private const val TAG = "GoogleTranslator"
     private val memoryCache = ConcurrentHashMap<String, String>()
+    private val rateLimiter = Semaphore(1)
 
-    // ตั้งค่าตัวโมเดล Gemini 2.5 Flash
-    private val generativeModel = GenerativeModel(
-        modelName = "gemini-2.5-flash",
-        apiKey = API_KEY,
-        generationConfig = generationConfig {
-            temperature = 0.1f
-        }
+    // Supported stable models for Firebase AI Logic as of Oct 2026.
+    private val fallbackModels = listOf(
+        "gemini-3.5-flash-lite",
+        "gemini-3.5-flash"
     )
 
-    // [แก้ไข] เพิ่ม context: Context เข้ามาในพารามิเตอร์
-    suspend fun translate(context: Context, text: String, targetLang: String): String? {
-        return withContext(Dispatchers.IO) {
-            if (text.isBlank() || text == "null" || text == "-") {
-                return@withContext text
-            }
+    /** Compatible with existing 3-argument callers. */
+    suspend fun translate(context: Context, text: String, targetLang: String): String =
+        translate(
+            context = context,
+            cardId = text.hashCode().toString(),
+            text = text,
+            targetLang = targetLang
+        )
 
-            // เข้าถึงไฟล์เซฟของเครื่องชื่อ "TranslationCache"
-            val prefs = context.getSharedPreferences("TranslationCache", Context.MODE_PRIVATE)
+    /** Compatible with existing CardDetailScreen 4-argument callers. */
+    suspend fun translate(
+        context: Context,
+        cardId: String,
+        text: String,
+        targetLang: String
+    ): String = withContext(Dispatchers.IO) {
+        if (text.isBlank() || text == "null" || text == "-") return@withContext text
 
-            // สร้าง Key ประจำตัวของข้อความ
-            val cacheKey = "${targetLang.lowercase()}_${text.trim()}"
+        val languageCode = if (targetLang.equals("th", ignoreCase = true)) "th" else "en"
+        val languageName = if (languageCode == "th") "Thai" else "English"
+        val prefs = context.getSharedPreferences("TranslationCache", Context.MODE_PRIVATE)
+        // Include text hash to avoid returning stale translations when card text changes.
+        val cacheKey = "${languageCode}_${cardId.trim()}_${text.hashCode()}"
 
-            // ขั้นที่ 1: เช็กใน RAM ก่อน (ความเร็ว 0.001 วินาที)
-            if (memoryCache.containsKey(cacheKey)) {
-                return@withContext memoryCache[cacheKey]
-            }
+        memoryCache[cacheKey]?.let { return@withContext it }
+        prefs.getString(cacheKey, null)?.let { cached ->
+            memoryCache[cacheKey] = cached
+            return@withContext cached
+        }
 
-            // ขั้นที่ 2: เช็กในไฟล์เซฟของเครื่อง (กรณีเพิ่งเปิดแอปใหม่)
-            val savedTranslation = prefs.getString(cacheKey, null)
-            if (savedTranslation != null) {
-                // เจอในเครื่อง! ดึงมาใส่ RAM ไว้เลยรอบหน้าจะได้ไม่ต้องค้นไฟล์อีก
-                memoryCache[cacheKey] = savedTranslation
-                return@withContext savedTranslation
-            }
-
-            // ขั้นที่ 3: ถ้าไม่มีที่ไหนเลย ค่อยให้ AI แปล (รออินเทอร์เน็ต)
-            val languageName = if (targetLang.lowercase() == "th") "Thai" else "English"
+        rateLimiter.withPermit {
+            // Another queued request may have filled the cache while we waited.
+            memoryCache[cacheKey]?.let { return@withPermit it }
 
             val prompt = """
                 You are an expert translator for the Detective Conan Trading Card Game (TCG).
                 Translate the following Japanese card text into $languageName.
-                
+
                 Strict Rules for TCG Terminology:
-                1. Maintain precise terms like AP, LP, FILE, Deck, Trash, Hand.
-                2. Format keywords strictly with brackets as follows:
-                   - 【スリープ】 -> [Sleep] 
+                1. Preserve AP, LP, FILE, Deck, Trash, Hand and other game terms accurately.
+                2. Format keywords strictly with brackets:
+                   - 【スリープ】 -> [Sleep]
                    - 【アクティブ】 -> [Active]
-                   - 【事件解決】 -> [Case Resolved] (if English) or [ไขคดีสำเร็จ] (if Thai)
-                   - 【ターン１回】 or 【ターン1回】 -> [Once per turn] (if English) or [เทิร์นละ 1 ครั้ง] (if Thai)
+                   - 【事件解決】 -> [Case Resolved] in English / [ไขคดีสำเร็จ] in Thai
+                   - 【ターン１回】 or 【ターン1回】 -> [Once per turn] in English / [เทิร์นละ 1 ครั้ง] in Thai
                    - 【アシスト】 -> [Assist]
-                   - 【解決編】 -> [Resolution] (if English) or [ช่วงไขคดี] (if Thai)
-                   - 【パートナー】 -> [Partner] (if English) or [พาร์ทเนอร์] (if Thai)
-                3. Make the sentence structure sound natural for TCG players in $languageName.
-                4. Output ONLY the final translated text. Do not add any conversational filler, quotes, or explanations.
-                
-                Japanese Text to translate:
+                   - 【解決編】 -> [Resolution] in English / [ช่วงไขคดี] in Thai
+                   - 【パートナー】 -> [Partner] in English / [พาร์ทเนอร์] in Thai
+                3. Use natural terminology for TCG players in $languageName.
+                4. Output ONLY the translated text; no explanations or quotes.
+                5. If the original contains the delimiter " ||| ", preserve it exactly.
+
+                Japanese text:
                 $text
             """.trimIndent()
 
-            try {
-                val response = generativeModel.generateContent(prompt)
-                val translatedText = response.text?.trim()
+            for (modelName in fallbackModels) {
+                try {
+                    val model = Firebase.ai(backend = GenerativeBackend.googleAI())
+                        .generativeModel(
+                            modelName = modelName,
+                            generationConfig = generationConfig { temperature = 0.1f }
+                        )
 
-                if (!translatedText.isNullOrEmpty()) {
-                    // จำใส่ RAM
-                    memoryCache[cacheKey] = translatedText
-                    // [สำคัญ] เซฟลงเครื่อง! คราวหน้าปิดแอปเปิดใหม่ก็ยังอยู่
-                    prefs.edit().putString(cacheKey, translatedText).apply()
+                    val result = model.generateContent(prompt).text?.trim().orEmpty()
+                    if (result.isNotEmpty()) {
+                        memoryCache[cacheKey] = result
+                        prefs.edit().putString(cacheKey, result).apply()
+                        return@withPermit result
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.w(TAG, "Translation with $modelName failed: ${error.javaClass.simpleName}")
+                    delay(800L)
                 }
-
-                translatedText
-            } catch (e: Exception) {
-                e.printStackTrace()
-                text
             }
+
+            // Match prior behavior: show original text when all models are unavailable.
+            text
         }
     }
 }

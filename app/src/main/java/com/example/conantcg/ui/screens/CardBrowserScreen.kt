@@ -28,6 +28,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
@@ -58,6 +59,8 @@ fun CardBrowserScreen(viewModel: CardViewModel, isCollectionMode: Boolean, onBac
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     var viewingContext by remember { mutableStateOf<Pair<List<WebCard>, Int>?>(null) }
+    // Collection Dashboard is available only from My Collection.
+    var showCollectionDashboard by rememberSaveable { mutableStateOf(false) }
 
     val mapSaver = listSaver<MutableMap<PackCategory, String?>, String>(
         save = { map -> map.entries.map { "${it.key.name}|${it.value ?: ""}" } },
@@ -99,7 +102,13 @@ fun CardBrowserScreen(viewModel: CardViewModel, isCollectionMode: Boolean, onBac
         selectedCardCategory = "All"; collectionFilter = CollectionFilter.ALL
     }
 
-    BackHandler {
+    // Keep the effect composed while Dashboard is open so returning does not
+    // unexpectedly reset the selected filters or Collection category.
+    LaunchedEffect(pagerState.currentPage) { resetFilters() }
+
+    // Dashboard animates above My Collection instead of replacing it.
+    // Keeping this screen composed preserves pack tabs, search and scroll position.
+    BackHandler(enabled = !showCollectionDashboard) {
         when {
             viewingContext != null -> viewingContext = null
             currentSelectedPack != null -> {
@@ -111,93 +120,181 @@ fun CardBrowserScreen(viewModel: CardViewModel, isCollectionMode: Boolean, onBac
         }
     }
 
-    LaunchedEffect(pagerState.currentPage) { resetFilters() }
+    // Premium "Case File" transition (only active from My Collection).
+    val browserScale by animateFloatAsState(
+        targetValue = if (isCollectionMode && showCollectionDashboard) 0.985f else 1f,
+        animationSpec = tween(durationMillis = 380, easing = FastOutSlowInEasing),
+        label = "collection_browser_scale"
+    )
+    val backdropDim by animateFloatAsState(
+        targetValue = if (isCollectionMode && showCollectionDashboard) 0.15f else 0f,
+        animationSpec = tween(durationMillis = 300),
+        label = "collection_dashboard_dim"
+    )
 
-    Scaffold(containerColor = Color.Transparent, topBar = {
-        Column(Modifier.background(Brush.verticalGradient(colors = listOf(ConanTheme.BlueSuit, Color(0xFF151C5E)))).statusBarsPadding()) {
-            if (isLandscape) {
-                Row(modifier = Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = {
-                        if (currentSelectedPack != null) {
-                            if (isAnyFilterActive) resetFilters()
-                            else {
-                                collectionFilter = CollectionFilter.ALL
-                                packSelectionMap[currentCategory] = null
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Keep the old browser alive while Dashboard enters/exits.
+        Box(
+            modifier = Modifier.fillMaxSize().graphicsLayer {
+                scaleX = browserScale
+                scaleY = browserScale
+            }
+        ) {
+            Scaffold(containerColor = Color.Transparent, topBar = {
+                Column(Modifier.background(Brush.verticalGradient(colors = listOf(ConanTheme.BlueSuit, Color(0xFF151C5E)))).statusBarsPadding()) {
+                    if (isLandscape) {
+                        Row(modifier = Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = {
+                                if (currentSelectedPack != null) {
+                                    if (isAnyFilterActive) resetFilters()
+                                    else {
+                                        collectionFilter = CollectionFilter.ALL
+                                        packSelectionMap[currentCategory] = null
+                                    }
+                                } else onBack()
+                            }) {
+                                // ✅ จุดที่ 1: เปลี่ยนมาใช้ Image
+                                Image(
+                                    painter = painterResource(id = R.drawable.arrowleft),
+                                    contentDescription = "Back",
+                                    modifier = Modifier.size(30.dp) // ขยายขนาดให้มองเห็นชัดเจน
+                                )
                             }
-                        } else onBack()
-                    }) {
-                        // ✅ จุดที่ 1: เปลี่ยนมาใช้ Image
-                        Image(
-                            painter = painterResource(id = R.drawable.arrowleft),
-                            contentDescription = "Back",
-                            modifier = Modifier.size(30.dp) // ขยายขนาดให้มองเห็นชัดเจน
-                        )
+                            Spacer(Modifier.width(8.dp))
+                            Text(text = if(isCollectionMode) "My Collection" else "Card Catalog", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            if (currentSelectedPack != null) { Text(" > ", color = Color.White.copy(alpha = 0.7f)); Text(text = currentSelectedPack, color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)) }
+                            else Spacer(Modifier.weight(1f))
+                            // Landscape: dashboard button on the right of My Collection.
+                            if (isCollectionMode) {
+                                IconButton(onClick = { showCollectionDashboard = true }, modifier = Modifier.size(40.dp)) {
+                                    Icon(
+                                        imageVector = Icons.Default.BarChart,
+                                        contentDescription = "Open Collection Dashboard",
+                                        tint = ConanTheme.GoldBadge,
+                                        modifier = Modifier.size(23.dp)
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        Box(modifier = Modifier.fillMaxWidth().height(48.dp)) {
+                            IconButton(onClick = {
+                                if (currentSelectedPack != null) {
+                                    if (isAnyFilterActive) resetFilters()
+                                    else {
+                                        collectionFilter = CollectionFilter.ALL
+                                        packSelectionMap[currentCategory] = null
+                                    }
+                                } else onBack()
+                            }, modifier = Modifier.align(Alignment.CenterStart)) {
+                                // ✅ จุดที่ 2: เปลี่ยนมาใช้ Image
+                                Image(
+                                    painter = painterResource(id = R.drawable.arrowleft),
+                                    contentDescription = "Back",
+                                    modifier = Modifier.size(30.dp)
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.align(Alignment.Center).padding(horizontal = 56.dp)) {
+                                Text(if(isCollectionMode) "My Collection" else "Card Catalog", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                if (currentSelectedPack != null) { Text(currentSelectedPack, color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                            }
+                            // Portrait: keep the existing centered title and place the action at right.
+                            if (isCollectionMode) {
+                                IconButton(
+                                    onClick = { showCollectionDashboard = true },
+                                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 4.dp).size(44.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.BarChart,
+                                        contentDescription = "Open Collection Dashboard",
+                                        tint = ConanTheme.GoldBadge,
+                                        modifier = Modifier.size(23.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
-                    Spacer(Modifier.width(8.dp))
-                    Text(text = if(isCollectionMode) "My Collection" else "Card Catalog", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    if (currentSelectedPack != null) { Text(" > ", color = Color.White.copy(alpha = 0.7f)); Text(text = currentSelectedPack, color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)) }
+                    AnimatedVisibility(visible = currentSelectedPack == null) {
+                        AnimatedCategoryTabs(categories = PackCategory.entries, selectedIndex = pagerState.currentPage, onTabSelected = { index -> scope.launch { pagerState.animateScrollToPage(index) } })
+                    }
                 }
-            } else {
-                Box(modifier = Modifier.fillMaxWidth().height(48.dp)) {
-                    IconButton(onClick = {
-                        if (currentSelectedPack != null) {
-                            if (isAnyFilterActive) resetFilters()
-                            else {
-                                collectionFilter = CollectionFilter.ALL
-                                packSelectionMap[currentCategory] = null
-                            }
-                        } else onBack()
-                    }, modifier = Modifier.align(Alignment.CenterStart)) {
-                        // ✅ จุดที่ 2: เปลี่ยนมาใช้ Image
-                        Image(
-                            painter = painterResource(id = R.drawable.arrowleft),
-                            contentDescription = "Back",
-                            modifier = Modifier.size(30.dp)
-                        )
-                    }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.align(Alignment.Center).padding(horizontal = 48.dp)) {
-                        Text(if(isCollectionMode) "My Collection" else "Card Catalog", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        if (currentSelectedPack != null) { Text(currentSelectedPack, color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                    }
+            }) { padding ->
+                HorizontalPager(state = pagerState, modifier = Modifier.padding(padding).fillMaxSize(), userScrollEnabled = currentSelectedPack == null) { pageIndex ->
+                    CategoryBrowserPage(
+                        viewModel = viewModel,
+                        category = PackCategory.entries[pageIndex],
+                        isCollectionMode = isCollectionMode,
+                        selectedPack = packSelectionMap[PackCategory.entries[pageIndex]],
+                        onPackSelect = { pack -> packSelectionMap[PackCategory.entries[pageIndex]] = pack },
+                        onCardClick = { list, index -> viewingContext = list to index },
+                        searchQuery = searchQuery,
+                        onSearchQueryChange = { searchQuery = it },
+                        collectionFilter = collectionFilter,
+                        onCollectionFilterChange = { collectionFilter = it },
+                        selectedColors = selectedColors,
+                        onColorsChange = { selectedColors = it },
+                        selectedTypes = selectedTypes,
+                        onTypesChange = { selectedTypes = it },
+                        selectedRarities = selectedRarities,
+                        onRaritiesChange = { selectedRarities = it },
+                        selectedAps = selectedAps,
+                        onApsChange = { selectedAps = it },
+                        selectedLevels = selectedLevels,
+                        onLevelsChange = { selectedLevels = it },
+                        selectedLps = selectedLps,
+                        onLpsChange = { selectedLps = it },
+                        selectedCardCategory = selectedCardCategory,
+                        onCategoryChange = { selectedCardCategory = it },
+                        isAnyFilterActive = isAnyFilterActive,
+                        onResetFilters = { resetFilters() }
+                    )
                 }
             }
-            AnimatedVisibility(visible = currentSelectedPack == null) {
-                AnimatedCategoryTabs(categories = PackCategory.entries, selectedIndex = pagerState.currentPage, onTabSelected = { index -> scope.launch { pagerState.animateScrollToPage(index) } })
-            }
+            if (viewingContext != null) { val (cardList, startIndex) = viewingContext!!; SwipeableCardDetailDialog(initialCards = cardList, startIndex = startIndex, viewModel = viewModel, isCollectionMode = isCollectionMode, onDismiss = { viewingContext = null }) }
         }
-    }) { padding ->
-        HorizontalPager(state = pagerState, modifier = Modifier.padding(padding).fillMaxSize(), userScrollEnabled = currentSelectedPack == null) { pageIndex ->
-            CategoryBrowserPage(
-                viewModel = viewModel,
-                category = PackCategory.entries[pageIndex],
-                isCollectionMode = isCollectionMode,
-                selectedPack = packSelectionMap[PackCategory.entries[pageIndex]],
-                onPackSelect = { pack -> packSelectionMap[PackCategory.entries[pageIndex]] = pack },
-                onCardClick = { list, index -> viewingContext = list to index },
-                searchQuery = searchQuery,
-                onSearchQueryChange = { searchQuery = it },
-                collectionFilter = collectionFilter,
-                onCollectionFilterChange = { collectionFilter = it },
-                selectedColors = selectedColors,
-                onColorsChange = { selectedColors = it },
-                selectedTypes = selectedTypes,
-                onTypesChange = { selectedTypes = it },
-                selectedRarities = selectedRarities,
-                onRaritiesChange = { selectedRarities = it },
-                selectedAps = selectedAps,
-                onApsChange = { selectedAps = it },
-                selectedLevels = selectedLevels,
-                onLevelsChange = { selectedLevels = it },
-                selectedLps = selectedLps,
-                onLpsChange = { selectedLps = it },
-                selectedCardCategory = selectedCardCategory,
-                onCategoryChange = { selectedCardCategory = it },
-                isAnyFilterActive = isAnyFilterActive,
-                onResetFilters = { resetFilters() }
-            )
+
+        if (isCollectionMode) {
+            if (backdropDim > 0f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = backdropDim))
+                )
+            }
+
+            AnimatedVisibility(
+                visible = showCollectionDashboard,
+                modifier = Modifier.fillMaxSize(),
+                enter = slideInHorizontally(
+                    initialOffsetX = { fullWidth -> (fullWidth * 0.75f).toInt() },
+                    animationSpec = tween(
+                        durationMillis = 440,
+                        easing = FastOutSlowInEasing
+                    )
+                ) + fadeIn(
+                    animationSpec = tween(durationMillis = 260, delayMillis = 45)
+                ) + scaleIn(
+                    initialScale = 0.965f,
+                    animationSpec = tween(durationMillis = 440, easing = FastOutSlowInEasing)
+                ),
+                exit = slideOutHorizontally(
+                    targetOffsetX = { fullWidth -> (fullWidth * 0.35f).toInt() },
+                    animationSpec = tween(durationMillis = 310, easing = FastOutSlowInEasing)
+                ) + fadeOut(
+                    animationSpec = tween(durationMillis = 250)
+                ) + scaleOut(
+                    targetScale = 0.98f,
+                    animationSpec = tween(durationMillis = 310, easing = FastOutSlowInEasing)
+                )
+            ) {
+                // Uses the existing Dashboard with bg1; no duplicate composable.
+                CollectionDashboardScreen(
+                    viewModel = viewModel,
+                    onBack = { showCollectionDashboard = false }
+                )
+            }
         }
     }
-    if (viewingContext != null) { val (cardList, startIndex) = viewingContext!!; SwipeableCardDetailDialog(initialCards = cardList, startIndex = startIndex, viewModel = viewModel, isCollectionMode = isCollectionMode, onDismiss = { viewingContext = null }) }
 }
 
 @Composable

@@ -13,6 +13,7 @@ import com.example.conantcg.utils.ConanTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        ConanAppCheckInitializer.initialize(this)
         val vm = ViewModelProvider(this)[CardViewModel::class.java]
         setContent {
             MaterialTheme(colorScheme = lightColorScheme(
@@ -25,4 +26,5 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
 }
