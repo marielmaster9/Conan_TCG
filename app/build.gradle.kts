@@ -28,6 +28,8 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            isShrinkResources = false
+
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -98,4 +100,13 @@ dependencies {
     implementation("com.google.firebase:firebase-appcheck")
     debugImplementation("com.google.firebase:firebase-appcheck-debug")
     releaseImplementation("com.google.firebase:firebase-appcheck-playintegrity")
+
+
+    // Align Compose touch, scrolling and animation libraries
+    implementation("androidx.compose.foundation:foundation:1.9.2")
+    implementation("androidx.compose.foundation:foundation-layout:1.9.2")
+    implementation("androidx.compose.animation:animation:1.9.2")
+    implementation("androidx.compose.animation:animation-core:1.9.2")
+
+    implementation("sh.calvin.reorderable:reorderable:3.1.0")
 }
